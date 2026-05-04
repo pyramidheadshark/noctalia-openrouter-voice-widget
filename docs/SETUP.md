@@ -4,6 +4,17 @@
 
 This guide covers the implemented local setup for the Noctalia host stack, with `niri`, `Noctalia`, and the `noctalia-openrouter-voice-widget` helper service.
 
+## Fast path (recommended)
+
+From project root:
+
+```bash
+printf '%s\n' 'OPENROUTER_API_KEY=YOUR_KEY' > .env
+bash scripts/install-local.sh
+```
+
+This performs local service install/restart and runs a snapshot health check.
+
 ## Prerequisites
 
 - Linux user session with `systemd --user`
