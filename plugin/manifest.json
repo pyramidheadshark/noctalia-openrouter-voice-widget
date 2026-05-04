@@ -1,0 +1,36 @@
+{
+  "id": "voice-dictation",
+  "name": "Voice Dictation",
+  "version": "0.1.0",
+  "minNoctaliaVersion": "4.1.2",
+  "author": "OhMyOpenCode",
+  "license": "MIT",
+  "repository": "https://github.com/noctalia-dev/noctalia-plugins",
+  "description": "Bar-first voice dictation shell for the Noctalia OpenRouter helper service.",
+  "tags": [
+    "Bar",
+    "Panel",
+    "Voice",
+    "Productivity"
+  ],
+  "entryPoints": {
+    "main": "Main.qml",
+    "barWidget": "BarWidget.qml",
+    "panel": "Panel.qml",
+    "settings": "Settings.qml"
+  },
+  "dependencies": {
+    "plugins": []
+  },
+  "metadata": {
+    "panel": {
+      "detached": true,
+      "defaultPosition": "right",
+      "defaultHeightRatio": 0.88
+    },
+    "defaultSettings": {
+      "selectedPromptPresetId": "",
+      "historyLimit": 20
+    }
+  }
+}

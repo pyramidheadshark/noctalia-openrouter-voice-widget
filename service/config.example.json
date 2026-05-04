@@ -1,0 +1,13 @@
+{
+  "socketPath": "${XDG_RUNTIME_DIR}/noctalia-openrouter-voice-widget.sock",
+  "historyDbPath": "~/.local/state/noctalia-openrouter-voice-widget/history.sqlite3",
+  "jobsCacheDir": "~/.cache/noctalia-openrouter-voice-widget/jobs",
+  "exportDirectory": "~/Documents/VoiceTranscripts",
+  "defaultPromptPresetId": "ml-dictation-default",
+  "sttModel": "openai/whisper-large-v3",
+  "cleanupModel": "google/gemini-3-flash-preview",
+  "completedJobRetentionDays": 30,
+  "failedJobRetentionDays": 7,
+  "failedJobAudioTtlHours": 24,
+  "exportFileNamePattern": "{{completedAt}}-{{jobId}}.md"
+}
