@@ -19,7 +19,7 @@ Rectangle {
   readonly property string statusLabel: mainInstance?.statusLabelForState(lifecycleState) || "Idle"
   readonly property string statusCaption: mainInstance?.statusCaptionForState(lifecycleState) || ""
   readonly property color statusTone: mainInstance?.statusToneForState(lifecycleState) || Color.mPrimary
-  readonly property string statusIcon: mainInstance?.statusIconForState(lifecycleState) || "waveform"
+  readonly property string statusIcon: mainInstance?.statusIconForState(lifecycleState) || "keyboard"
 
   implicitWidth: widgetRow.implicitWidth + Style.marginS * 2
   implicitHeight: Style.barHeight
@@ -100,29 +100,6 @@ Rectangle {
           if (mainInstance)
             mainInstance.toggleRecording();
         }
-      }
-    }
-
-    Rectangle {
-      id: panelSegment
-      Layout.preferredWidth: 38
-      Layout.fillHeight: true
-      radius: Style.radiusM - 2
-      color: panelMouseArea.containsPress ? Color.mSurface : Color.mSurfaceVariant
-
-      NIcon {
-        anchors.centerIn: parent
-        icon: "panel-right"
-        color: Color.mOnSurfaceVariant
-        pointSize: Style.fontSizeM
-      }
-
-      MouseArea {
-        id: panelMouseArea
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        onClicked: pluginApi.togglePanel(root.screen, root)
       }
     }
   }

@@ -17,6 +17,7 @@ Item {
   property bool historyLoading: false
   property bool promptLoading: false
   property bool mutationLoading: false
+  property bool pendingStopRequest: false
   property string lastErrorCode: ""
   property string lastErrorMessage: ""
 
@@ -102,12 +103,12 @@ Item {
   function statusIconForState(state) {
     var group = statusGroupForState(state);
     if (group === "recording")
-      return "microphone";
+      return "music";
     if (group === "processing")
-      return "loader";
+      return "refresh";
     if (group === "error")
       return "alert-circle";
-    return "waveform";
+    return "keyboard";
   }
 
   function statusToneForState(state) {
@@ -170,7 +171,7 @@ Item {
     return [
       "python3",
       "-c",
-      "import os, subprocess, sys; plugin_dir = os.path.realpath(sys.argv[1]); script = os.path.join(os.path.dirname(plugin_dir), 'service', 'ipc_client.py'); raise SystemExit(subprocess.call(['python3', script, sys.argv[2], sys.argv[3]]))",
+      "import os, subprocess, sys; plugin_dir = os.path.realpath(sys.argv[1]); script = os.path.join(plugin_dir, 'service', 'ipc_client.py'); fallback = os.path.join(os.path.dirname(plugin_dir), 'service', 'ipc_client.py'); target = script if os.path.exists(script) else fallback; raise SystemExit(subprocess.call(['python3', target, sys.argv[2], sys.argv[3]]))",
       pluginDirPath,
       command,
       JSON.stringify(params || {})
@@ -262,6 +263,15 @@ Item {
   }
 
   function toggleRecording() {
+    if (mutationLoading) {
+      if (statusGroup === "recording" || mutationProcess.commandName === "startRecording") {
+        pendingStopRequest = true;
+        ToastService.showNotice("Stop requested. Waiting for recording start to settle.");
+      } else {
+        ToastService.showNotice("Please wait for the current recording command to finish.");
+      }
+      return;
+    }
     if (statusGroup === "recording") {
       stopRecording();
       return;
@@ -285,6 +295,10 @@ Item {
   }
 
   function stopRecording() {
+    if (mutationLoading) {
+      pendingStopRequest = true;
+      return;
+    }
     mutationLoading = true;
     beginProcess(mutationProcess, "stopRecording", {});
   }
@@ -403,14 +417,22 @@ Item {
     }
     onExited: function (exitCode, exitStatus) {
       root.mutationLoading = false;
+      var replayStop = root.pendingStopRequest;
+      root.pendingStopRequest = false;
       root.finishJsonProcess(mutationProcess, function (result) {
-        if (mutationProcess.commandName === "startRecording")
+        if (mutationProcess.commandName === "startRecording") {
           ToastService.showNotice("Recording started.");
-        else if (mutationProcess.commandName === "stopRecording")
-          ToastService.showNotice("Recording stopped. Processing transcript.");
+        } else if (mutationProcess.commandName === "stopRecording") {
+          if (result?.job?.status === "cancelled" && result?.job?.errorCode === "audio_missing")
+            ToastService.showNotice("Recording stopped, but no audio was captured. Try speaking a bit longer and check the selected microphone.");
+          else
+            ToastService.showNotice("Recording stopped. Processing transcript.");
+        }
         if (result.state)
           root.snapshotData.state = result.state;
         root.refreshAll();
+        if (replayStop && root.statusGroup === "recording")
+          root.stopRecording();
       });
     }
   }

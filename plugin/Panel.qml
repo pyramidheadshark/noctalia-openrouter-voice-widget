@@ -122,7 +122,6 @@ Item {
 
             NButton {
               text: mainInstance?.statusGroup === "recording" ? "Stop" : "Record"
-              highlighted: true
               enabled: Boolean(mainInstance) && !mainInstance.mutationLoading
               onClicked: {
                 if (mainInstance)

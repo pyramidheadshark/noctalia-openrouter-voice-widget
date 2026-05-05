@@ -1463,6 +1463,31 @@ class VoiceWidgetService:
             completed_transitions, temp_audio_removed = self._complete_job(job_id, session_id)
             transition_path.extend(completed_transitions)
         except ServiceError as exc:
+            if exc.code == "audio_missing":
+                self._transition_job_state(
+                    job_id,
+                    session_id,
+                    "cancelled",
+                    error_code="audio_missing",
+                    error_message=exc.message,
+                    completed_at=utc_now(),
+                )
+                temp_audio_removed = self._remove_temp_audio(job_id)
+                return {
+                    "ack": True,
+                    "jobId": job_id,
+                    "state": self._state_payload(),
+                    "transitionPath": [*transition_path, "cancelled"],
+                    "job": {
+                        "jobId": job_id,
+                        "sessionId": session_id,
+                        "status": "cancelled",
+                        "errorCode": "audio_missing",
+                        "errorMessage": exc.message,
+                        "tempAudioRemoved": temp_audio_removed,
+                    },
+                }
+
             request_metadata = exc.details.get("requestMetadata")
             extra_fields: dict[str, object] = {}
             if isinstance(request_metadata, dict):
