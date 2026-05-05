@@ -5,8 +5,10 @@ import base64
 import hashlib
 import json
 import os
+import shutil
 import signal
 import socket
+import subprocess
 import sqlite3
 import stat
 import time
@@ -177,6 +179,8 @@ class VoiceWidgetService:
         self.state: RuntimeState = RuntimeState()
         self.server: asyncio.base_events.Server | None = None
         self.shutdown_event: asyncio.Event = asyncio.Event()
+        self.active_recorder_process: subprocess.Popen[str] | None = None
+        self.active_recorder_job_id: str | None = None
         self._ensure_storage_paths()
         self._initialize_database()
         self._reconcile_unfinished_jobs()
@@ -495,6 +499,98 @@ class VoiceWidgetService:
 
     def _job_audio_path(self, job_id: str) -> Path:
         return self.jobs_cache_dir / f"{job_id}.wav"
+
+    def _resolve_recorder_command(self, audio_path: Path) -> list[str]:
+        if shutil.which("pw-record"):
+            return [
+                "pw-record",
+                "--rate",
+                "16000",
+                "--channels",
+                "1",
+                str(audio_path),
+            ]
+        if shutil.which("parecord"):
+            return [
+                "parecord",
+                "--rate",
+                "16000",
+                "--channels",
+                "1",
+                "--file-format=wav",
+                str(audio_path),
+            ]
+        if shutil.which("arecord"):
+            return [
+                "arecord",
+                "-q",
+                "-f",
+                "S16_LE",
+                "-r",
+                "16000",
+                "-c",
+                "1",
+                str(audio_path),
+            ]
+        raise ServiceError(
+            "recorder_unavailable",
+            "No supported recorder backend found (pw-record, parecord, arecord).",
+            details={"retryable": False},
+        )
+
+    def _start_audio_capture(self, job_id: str, audio_path: Path) -> None:
+        if self.active_recorder_process is not None:
+            raise ServiceError(
+                "recording_active",
+                "A recorder process is already active.",
+                details={"jobId": self.active_recorder_job_id},
+            )
+
+        command = self._resolve_recorder_command(audio_path)
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        time.sleep(0.12)
+        if process.poll() is not None:
+            stderr_output = ""
+            if process.stderr is not None:
+                stderr_output = (process.stderr.read() or "").strip()
+                process.stderr.close()
+            raise ServiceError(
+                "recording_backend_failed",
+                "Recorder backend exited immediately. Check microphone permissions/device.",
+                details={
+                    "command": command,
+                    "returnCode": process.returncode,
+                    "stderr": stderr_output,
+                    "retryable": False,
+                },
+            )
+
+        self.active_recorder_process = process
+        self.active_recorder_job_id = job_id
+
+    def _stop_audio_capture(self, job_id: str) -> None:
+        process = self.active_recorder_process
+        if process is None:
+            return
+        if self.active_recorder_job_id != job_id:
+            return
+
+        try:
+            process.terminate()
+            process.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2.0)
+        finally:
+            if process.stderr is not None:
+                process.stderr.close()
+            self.active_recorder_process = None
+            self.active_recorder_job_id = None
 
     def _read_secret(
         self,
@@ -938,8 +1034,8 @@ class VoiceWidgetService:
                 response_text = response_payload.get("text")
                 if not isinstance(response_text, str) or not response_text.strip():
                     raise ServiceError(
-                        "stt_request_failed",
-                        "OpenRouter STT returned an empty transcript.",
+                        "no_speech_detected",
+                        "No speech was detected in the captured audio.",
                         details={"retryable": False},
                     )
 
@@ -1386,13 +1482,16 @@ class VoiceWidgetService:
         audio_path = self._job_audio_path(job_id)
         audio_path.touch(exist_ok=False)
         request_metadata: dict[str, object] = {}
-        if self._deterministic_qa_requested(params):
+        qa_deterministic = self._deterministic_qa_requested(params)
+        if qa_deterministic:
             fixture_audio_path = self._materialize_qa_fixture_audio(audio_path)
             request_metadata["qa"] = {
                 "mode": QA_MOCK_PROVIDER,
                 "mockProvider": QA_MOCK_PROVIDER,
                 "fixtureAudioFile": fixture_audio_path.name,
             }
+        else:
+            self._start_audio_capture(job_id, audio_path)
 
         with self._connect_db() as connection:
             prompt_row = self._ensure_prompt_preset_exists(connection, selected_prompt_preset_id)
@@ -1452,6 +1551,7 @@ class VoiceWidgetService:
         if session_id is None:
             raise ServiceError("internal_error", f"Active job {job_id} is missing its session context.")
 
+        self._stop_audio_capture(job_id)
         self._transition_job_state(
             job_id,
             session_id,
@@ -1463,12 +1563,12 @@ class VoiceWidgetService:
             completed_transitions, temp_audio_removed = self._complete_job(job_id, session_id)
             transition_path.extend(completed_transitions)
         except ServiceError as exc:
-            if exc.code == "audio_missing":
+            if exc.code in {"audio_missing", "no_speech_detected"}:
                 self._transition_job_state(
                     job_id,
                     session_id,
                     "cancelled",
-                    error_code="audio_missing",
+                    error_code=exc.code,
                     error_message=exc.message,
                     completed_at=utc_now(),
                 )
@@ -1482,7 +1582,7 @@ class VoiceWidgetService:
                         "jobId": job_id,
                         "sessionId": session_id,
                         "status": "cancelled",
-                        "errorCode": "audio_missing",
+                        "errorCode": exc.code,
                         "errorMessage": exc.message,
                         "tempAudioRemoved": temp_audio_removed,
                     },
@@ -1557,6 +1657,7 @@ class VoiceWidgetService:
             status = LEGACY_JOB_STATUS_MAP.get(str(row["status"]), str(row["status"]))
 
         if status not in TERMINAL_JOB_STATUSES:
+            self._stop_audio_capture(job_id)
             self._transition_job_state(
                 job_id,
                 session_id,
@@ -1770,10 +1871,17 @@ class VoiceWidgetService:
                 "error": {"code": "internal_error", "message": str(exc)},
             }
 
-        writer.write((json.dumps(response) + "\n").encode("utf-8"))
-        await writer.drain()
-        writer.close()
-        await writer.wait_closed()
+        try:
+            writer.write((json.dumps(response) + "\n").encode("utf-8"))
+            await writer.drain()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except ConnectionResetError:
+                pass
 
     def _prepare_socket(self) -> None:
         if self.socket_path.exists():

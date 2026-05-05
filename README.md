@@ -4,22 +4,20 @@
 
 ## Русский
 
-Локальный voice-dictation виджет для `niri + noctalia`:
-- **plugin/** — тонкий QML UI (bar + panel + settings)
-- **service/** — Python helper (запись, OpenRouter, история, экспорт, секрет)
+Локальный voice-dictation плагин для `niri + noctalia`:
+- **plugin/** — QML UI (бар-виджет, панель, настройки)
+- **service/** — Python helper (запись микрофона, OpenRouter STT/cleanup, история, экспорт)
 
-### Главное
-- Секрет хранится **только** в `~/.local/state/noctalia-openrouter-voice-widget/openrouter.key` (`0600`)
-- Нет localhost HTTP: только Unix socket `${XDG_RUNTIME_DIR}/noctalia-openrouter-voice-widget.sock`
-- Две роли моделей:
-  - `sttModel = openai/whisper-large-v3`
-  - `cleanupModel = google/gemini-3-flash-preview`
-- Хранятся `raw_transcript` + `processed_transcript`, raw audio по умолчанию не ретейнится
-- Экспорт в `~/Documents/VoiceTranscripts`
+### Текущий статус (зафиксировано)
+- ✅ Сервис стабильно поднимается как user systemd unit
+- ✅ Запись/стоп работают через локальный IPC socket
+- ✅ История и транскрипты сохраняются (`rawTranscript` + `processedTranscript`)
+- ✅ Панель `voice-dictation` загружается без QML crash
+- ✅ Горячая клавиша панели: `Mod+Shift+D`
 
 ---
 
-## Быстрая установка (локально, нативно)
+## Быстрый старт (нативно, локально)
 
 ```bash
 cd ~/Repos/noctalia-openrouter-voice-widget
@@ -27,27 +25,44 @@ printf '%s\n' 'OPENROUTER_API_KEY=YOUR_KEY' > .env
 bash scripts/install-local.sh
 ```
 
-Скрипт:
-- ставит user systemd unit,
-- создаёт config из `service/config.example.json` (если нет),
-- кладёт ключ из `.env` в секретный файл,
-- перезапускает сервис и делает `snapshot` проверку.
+Что делает installer:
+- ставит/обновляет `~/.config/systemd/user/noctalia-openrouter-voice-widget.service`
+- копирует plugin-файлы в `~/.config/noctalia/plugins/voice-dictation/`
+- пишет секрет в `~/.local/state/noctalia-openrouter-voice-widget/openrouter.key` (0600)
+- нормализует keybind и перезапускает helper
+- выполняет `snapshot` sanity check
 
 ---
 
-## Проверка что всё работает
+## Где в UI настройки ключа / моделей / системного промпта
 
-### 1) Базовая живость сервиса
+`Noctalia Settings → Plugins → Voice Dictation`
+
+Там доступны:
+- OpenRouter key
+- STT model
+- Cleanup model
+- Default prompt preset
+- Текст системного промпта (для выбранного preset)
+
+---
+
+## Проверка работоспособности
+
+### 1) Health
 ```bash
 python3 service/ipc_client.py snapshot
 ```
+Ожидаемо: `"ok": true`, `health.status = "ok"`.
 
-### 2) Детерминированный E2E (без микрофона и live OpenRouter)
+### 2) Живой цикл записи
 ```bash
-python3 service/ipc_client.py startRecording '{"sessionId":"qa-session","mockProvider":"deterministic"}'
+python3 service/ipc_client.py startRecording
+sleep 4
 python3 service/ipc_client.py stopRecording
-python3 service/ipc_client.py listHistory '{"limit":5}'
+python3 service/ipc_client.py listHistory '{"limit":3}'
 ```
+Ожидаемо: в истории появляется новый item, обычно `status: ready` (или `cancelled` при тишине).
 
 ### 3) Экспорт
 ```bash
@@ -57,60 +72,76 @@ ls ~/Documents/VoiceTranscripts
 
 ---
 
-## Интеграция в UI (`niri + noctalia`)
+## UI управление
 
-Проверить:
-- в `~/.config/noctalia/plugins.json` есть `voice-dictation` с `sourceUrl: "local"`
-- в bar widgets есть `{"id":"plugin:voice-dictation"}`
-- в `~/.config/niri/cfg/keybinds.kdl` есть `Mod+Shift+D -> plugin:voice-dictation togglePanel`
+- **ЛКМ по виджету в баре** — старт/стоп записи
+- **Кнопка `settings` справа в виджете** — открыть/закрыть панель
+- **`Mod+Shift+D`** — toggle панели
 
 ---
 
-## Документация
+## Важные пути
 
-- [docs/SETUP.md](docs/SETUP.md) — установка и rollout
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — архитектура и границы
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — диагностика
-- [service/README.md](service/README.md) — контракт сервиса/IPC
+- Repo: `~/Repos/noctalia-openrouter-voice-widget`
+- Plugin deploy: `~/.config/noctalia/plugins/voice-dictation/`
+- Service config: `~/.config/noctalia-openrouter-voice-widget/config.json`
+- Secret: `~/.local/state/noctalia-openrouter-voice-widget/openrouter.key`
+- Socket: `${XDG_RUNTIME_DIR}/noctalia-openrouter-voice-widget.sock`
+- History DB: `~/.local/state/noctalia-openrouter-voice-widget/history.sqlite3`
+
+---
+
+## Troubleshooting (коротко)
+
+1. **Плагин не открывается / черная панель**
+   - перезапусти shell:
+   ```bash
+   pkill -f "qs -c noctalia-shell"; nohup qs -c noctalia-shell >/tmp/noctalia-shell.log 2>&1 &
+   ```
+
+2. **Нет текста после записи**
+   - проверь `listHistory` и `snapshot`
+   - проверь микрофон и speaking level
+
+3. **Нужен полный traceback**
+   ```bash
+   journalctl --user -u noctalia-openrouter-voice-widget.service -n 300 --no-pager
+   ```
+
+Подробно: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
 ---
 
 ## English
 
-Local voice-dictation widget for `niri + noctalia`:
-- **plugin/** — thin QML UI shell (bar + panel + settings)
-- **service/** — Python helper (recording, OpenRouter, history, export, secret)
+Local voice-dictation plugin for `niri + noctalia`:
+- **plugin/** — QML UI (bar widget, panel, settings)
+- **service/** — Python helper (mic capture, OpenRouter STT/cleanup, history, export)
 
-### Core guarantees
-- Secret lives **only** in `~/.local/state/noctalia-openrouter-voice-widget/openrouter.key` (`0600`)
-- No localhost HTTP; only Unix socket `${XDG_RUNTIME_DIR}/noctalia-openrouter-voice-widget.sock`
-- Separate model roles:
-  - `sttModel = openai/whisper-large-v3`
-  - `cleanupModel = google/gemini-3-flash-preview`
-- History keeps `raw_transcript` + `processed_transcript`; raw audio is not retained by default
-- Exports are written to `~/Documents/VoiceTranscripts`
+### Current status
+- ✅ Service runs reliably as a user systemd unit
+- ✅ Start/stop recording works via local Unix socket IPC
+- ✅ Transcript history is persisted (`rawTranscript` + `processedTranscript`)
+- ✅ `voice-dictation` panel loads without QML crash
+- ✅ Panel hotkey is `Mod+Shift+D`
 
-### Quick local install
-
+### Quick install
 ```bash
 cd ~/Repos/noctalia-openrouter-voice-widget
 printf '%s\n' 'OPENROUTER_API_KEY=YOUR_KEY' > .env
 bash scripts/install-local.sh
 ```
 
-The installer:
-- installs the user systemd unit,
-- creates config from `service/config.example.json` (if missing),
-- writes the key from `.env` into the secret file,
-- restarts the helper and runs `snapshot` check.
+### Where to configure key/models/system prompt in UI
+`Noctalia Settings → Plugins → Voice Dictation`
 
-### Quick verification
-
+### Quick verify
 ```bash
 python3 service/ipc_client.py snapshot
-python3 service/ipc_client.py startRecording '{"sessionId":"qa-session","mockProvider":"deterministic"}'
+python3 service/ipc_client.py startRecording
+sleep 4
 python3 service/ipc_client.py stopRecording
-python3 service/ipc_client.py listHistory '{"limit":5}'
+python3 service/ipc_client.py listHistory '{"limit":3}'
 ```
 
 ### Docs

@@ -17,12 +17,12 @@ Rectangle {
   readonly property var mainInstance: pluginApi?.mainInstance
   readonly property string lifecycleState: mainInstance?.lifecycleState || "idle"
   readonly property string statusLabel: mainInstance?.statusLabelForState(lifecycleState) || "Idle"
-  readonly property string statusCaption: mainInstance?.statusCaptionForState(lifecycleState) || ""
   readonly property color statusTone: mainInstance?.statusToneForState(lifecycleState) || Color.mPrimary
   readonly property string statusIcon: mainInstance?.statusIconForState(lifecycleState) || "keyboard"
 
-  implicitWidth: widgetRow.implicitWidth + Style.marginS * 2
+  implicitWidth: 210
   implicitHeight: Style.barHeight
+  clip: true
   color: Style.capsuleColor
   radius: Style.radiusM
   border.width: 1
@@ -34,7 +34,6 @@ Rectangle {
   }
 
   RowLayout {
-    id: widgetRow
     anchors.fill: parent
     anchors.margins: Style.marginXS
     spacing: Style.marginXS
@@ -52,37 +51,33 @@ Rectangle {
         spacing: Style.marginS
 
         Rectangle {
-          Layout.preferredWidth: 28
-          Layout.preferredHeight: 28
-          radius: 14
+          Layout.preferredWidth: 22
+          Layout.preferredHeight: 22
+          radius: 11
           color: Qt.rgba(statusTone.r, statusTone.g, statusTone.b, 0.14)
 
           NIcon {
             anchors.centerIn: parent
             icon: statusIcon
             color: statusTone
-            pointSize: Style.fontSizeM
+            pointSize: Style.fontSizeS
           }
         }
 
-        ColumnLayout {
+        NText {
           Layout.fillWidth: true
-          spacing: 0
+          text: statusLabel
+          color: Color.mOnSurface
+          pointSize: Style.fontSizeS
+          font.weight: Font.DemiBold
+          elide: Text.ElideRight
+          horizontalAlignment: Text.AlignHCenter
+          verticalAlignment: Text.AlignVCenter
+        }
 
-          NText {
-            text: statusLabel
-            color: Color.mOnSurface
-            pointSize: Style.fontSizeS
-            font.weight: Font.DemiBold
-          }
-
-          NText {
-            text: lifecycleState === "recording" ? "Tap to stop capture" : (lifecycleState === "idle" || lifecycleState === "ready" || lifecycleState === "cancelled" ? "Tap to start dictation" : statusCaption)
-            color: Color.mOnSurfaceVariant
-            pointSize: Style.fontSizeXS
-            elide: Text.ElideRight
-            Layout.fillWidth: true
-          }
+        Item {
+          Layout.preferredWidth: 22
+          Layout.preferredHeight: 22
         }
       }
 
@@ -91,15 +86,35 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onClicked: function (mouse) {
-          if (mouse.button === Qt.RightButton) {
-            pluginApi.togglePanel(root.screen, root);
-            return;
-          }
+        acceptedButtons: Qt.LeftButton
+        onClicked: {
           if (mainInstance)
             mainInstance.toggleRecording();
         }
+      }
+    }
+
+    Rectangle {
+      id: panelSegment
+      Layout.preferredWidth: 28
+      Layout.fillHeight: true
+      radius: Style.radiusM - 2
+      color: panelMouseArea.containsPress ? Color.mSurface : Color.mSurfaceVariant
+
+      NIcon {
+        anchors.centerIn: parent
+        icon: "settings"
+        color: Color.mOnSurfaceVariant
+        pointSize: Style.fontSizeS
+      }
+
+      MouseArea {
+        id: panelMouseArea
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        acceptedButtons: Qt.LeftButton
+        onClicked: pluginApi.togglePanel(root.screen, root)
       }
     }
   }

@@ -14,6 +14,7 @@ ColumnLayout {
   property string editCleanupModel: mainInstance?.configSummary?.cleanupModel || "google/gemini-3-flash-preview"
   property string editExportDirectory: mainInstance?.configSummary?.exportDirectory || "~/Documents/VoiceTranscripts"
   property string editDefaultPromptPresetId: mainInstance?.configSummary?.defaultPromptPresetId || "ml-dictation-default"
+  property string editSystemPromptText: mainInstance?.promptTextForId(editDefaultPromptPresetId) || ""
   property int editCompletedRetentionDays: Number(mainInstance?.configSummary?.completedJobRetentionDays || 30)
   property int editFailedRetentionDays: Number(mainInstance?.configSummary?.failedJobRetentionDays || 7)
   property int editFailedAudioTtlHours: Number(mainInstance?.configSummary?.failedJobAudioTtlHours || 24)
@@ -240,6 +241,9 @@ ColumnLayout {
       "failedJobRetentionDays": root.editFailedRetentionDays,
       "failedJobAudioTtlHours": root.editFailedAudioTtlHours
     });
+
+    if ((root.editSystemPromptText || "").trim())
+      mainInstance.savePromptPreset(root.editDefaultPromptPresetId, root.editSystemPromptText);
 
     if ((root.editSecretValue || "").trim()) {
       mainInstance.saveSecretValue(root.editSecretValue);

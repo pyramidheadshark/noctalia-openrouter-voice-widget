@@ -101,13 +101,16 @@ Item {
   }
 
   function statusIconForState(state) {
-    var group = statusGroupForState(state);
-    if (group === "recording")
-      return "music";
-    if (group === "processing")
+    if (state === "recording")
+      return "disc";
+    if (state === "finalizing" || state === "transcribing" || state === "postprocessing")
       return "refresh";
-    if (group === "error")
+    if (state === "failed")
       return "alert-circle";
+    if (state === "ready")
+      return "circle-check";
+    if (state === "cancelled")
+      return "x";
     return "keyboard";
   }
 
@@ -261,6 +264,20 @@ Item {
     persistSelectedPromptPreset(presetId);
     ToastService.showNotice("Prompt preset set to " + promptLabelForId(presetId));
   }
+
+  function savePromptPreset(presetId, promptText) {
+    var normalizedPreset = (presetId || "").trim();
+    var normalizedText = (promptText || "").trim();
+    if (!normalizedPreset || !normalizedText)
+      return;
+    mutationLoading = true;
+    beginProcess(promptSaveProcess, "savePromptPreset", {
+      "presetId": normalizedPreset,
+      "label": promptLabelForId(normalizedPreset),
+      "promptText": normalizedText
+    });
+  }
+
 
   function toggleRecording() {
     if (mutationLoading) {
@@ -423,8 +440,8 @@ Item {
         if (mutationProcess.commandName === "startRecording") {
           ToastService.showNotice("Recording started.");
         } else if (mutationProcess.commandName === "stopRecording") {
-          if (result?.job?.status === "cancelled" && result?.job?.errorCode === "audio_missing")
-            ToastService.showNotice("Recording stopped, but no audio was captured. Try speaking a bit longer and check the selected microphone.");
+          if (result?.job?.status === "cancelled" && (result?.job?.errorCode === "audio_missing" || result?.job?.errorCode === "no_speech_detected"))
+            ToastService.showNotice("Recording stopped, but no speech was captured. Try speaking louder/longer and verify the selected microphone.");
           else
             ToastService.showNotice("Recording stopped. Processing transcript.");
         }
@@ -495,6 +512,26 @@ Item {
       root.mutationLoading = false;
       root.finishJsonProcess(secretProcess, function (result) {
         ToastService.showNotice("OpenRouter key saved to the local secret file.");
+        root.refreshAll();
+      });
+    }
+  }
+
+  Process {
+    id: promptSaveProcess
+    property string commandName: "savePromptPreset"
+    property string outputText: ""
+    property string errorText: ""
+    stdout: StdioCollector {
+      onStreamFinished: promptSaveProcess.outputText = text
+    }
+    stderr: StdioCollector {
+      onStreamFinished: promptSaveProcess.errorText = text
+    }
+    onExited: function (exitCode, exitStatus) {
+      root.mutationLoading = false;
+      root.finishJsonProcess(promptSaveProcess, function (result) {
+        ToastService.showNotice("System prompt preset saved.");
         root.refreshAll();
       });
     }

@@ -55,6 +55,14 @@ Item {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
           }
+
+          NText {
+            text: "Key/model/system prompt: Noctalia Settings → Plugins → Voice Dictation"
+            pointSize: Style.fontSizeXS
+            color: Color.mOnSurfaceVariant
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+          }
         }
 
         Rectangle {
@@ -120,12 +128,41 @@ Item {
               }
             }
 
-            NButton {
-              text: mainInstance?.statusGroup === "recording" ? "Stop" : "Record"
-              enabled: Boolean(mainInstance) && !mainInstance.mutationLoading
-              onClicked: {
-                if (mainInstance)
-                  mainInstance.toggleRecording();
+            Rectangle {
+              Layout.preferredWidth: 140
+              Layout.preferredHeight: 42
+              radius: Style.radiusM
+              color: mainInstance?.statusGroup === "recording" ? Qt.rgba(Color.mError.r, Color.mError.g, Color.mError.b, 0.18) : Qt.rgba(Color.mPrimary.r, Color.mPrimary.g, Color.mPrimary.b, 0.18)
+              border.width: 1
+              border.color: mainInstance?.statusGroup === "recording" ? Color.mError : Color.mPrimary
+              opacity: Boolean(mainInstance) && !mainInstance.mutationLoading ? 1.0 : 0.5
+
+              RowLayout {
+                anchors.centerIn: parent
+                spacing: Style.marginXS
+
+                NIcon {
+                  icon: mainInstance?.statusGroup === "recording" ? "x" : "disc"
+                  color: mainInstance?.statusGroup === "recording" ? Color.mError : Color.mPrimary
+                  pointSize: Style.fontSizeS
+                }
+
+                NText {
+                  text: mainInstance?.statusGroup === "recording" ? "Stop" : "Record"
+                  color: mainInstance?.statusGroup === "recording" ? Color.mError : Color.mPrimary
+                  pointSize: Style.fontSizeS
+                  font.weight: Font.Bold
+                }
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                enabled: Boolean(mainInstance) && !mainInstance.mutationLoading
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  if (mainInstance)
+                    mainInstance.toggleRecording();
+                }
               }
             }
           }
@@ -213,121 +250,118 @@ Item {
             }
           }
 
-          NScrollView {
+          ListView {
+            id: historyList
             Layout.fillWidth: true
             Layout.fillHeight: true
+            clip: true
+            spacing: Style.marginS
+            model: mainInstance?.historyItems || []
 
-            ListView {
-              clip: true
-              spacing: Style.marginS
-              model: mainInstance?.historyItems || []
+            delegate: Rectangle {
+              width: historyList.width
+              implicitHeight: cardLayout.implicitHeight + Style.marginM * 2
+              radius: Style.radiusM
+              color: Color.mSurface
+              border.width: 1
+              border.color: Color.mOutline
 
-              delegate: Rectangle {
-                required property var modelData
+              ColumnLayout {
+                id: cardLayout
+                anchors.fill: parent
+                anchors.margins: Style.marginM
+                spacing: Style.marginS
 
-                width: ListView.view.width
-                implicitHeight: cardLayout.implicitHeight + Style.marginM * 2
-                radius: Style.radiusM
-                color: Color.mSurface
-                border.width: 1
-                border.color: Color.mOutline
+                RowLayout {
+                  Layout.fillWidth: true
+                  spacing: Style.marginM
 
-                ColumnLayout {
-                  id: cardLayout
-                  anchors.fill: parent
-                  anchors.margins: Style.marginM
-                  spacing: Style.marginS
-
-                  RowLayout {
+                  ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: Style.marginM
+                    spacing: Style.marginXS
 
-                    ColumnLayout {
+                    NText {
+                      text: modelData?.sessionId || "Unknown session"
+                      pointSize: Style.fontSizeS
+                      font.weight: Font.DemiBold
+                      color: Color.mOnSurface
                       Layout.fillWidth: true
-                      spacing: Style.marginXS
-
-                      NText {
-                        text: modelData.sessionId || "Unknown session"
-                        pointSize: Style.fontSizeS
-                        font.weight: Font.DemiBold
-                        color: Color.mOnSurface
-                        Layout.fillWidth: true
-                        elide: Text.ElideRight
-                      }
-
-                      NText {
-                        text: (modelData.status || "idle") + " • " + (modelData.completedAt || modelData.createdAt || "")
-                        pointSize: Style.fontSizeXS
-                        color: Color.mOnSurfaceVariant
-                        Layout.fillWidth: true
-                        elide: Text.ElideRight
-                      }
-                    }
-
-                    Rectangle {
-                      Layout.preferredWidth: badgeText.implicitWidth + Style.marginM * 2
-                      Layout.preferredHeight: badgeText.implicitHeight + Style.marginXS * 2
-                      radius: Style.radiusM
-                      color: Color.mSurfaceVariant
-
-                      NText {
-                        id: badgeText
-                        anchors.centerIn: parent
-                        text: modelData.promptPresetId || "preset"
-                        pointSize: Style.fontSizeXS
-                        color: Color.mOnSurfaceVariant
-                      }
-                    }
-                  }
-
-                  NText {
-                    text: mainInstance?.transcriptPreview(mainInstance?.transcriptTextForItem(modelData) || "") || "Transcript pending"
-                    pointSize: Style.fontSizeS
-                    color: Color.mOnSurface
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                  }
-
-                  RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Style.marginM
-
-                    NButton {
-                      text: "Copy"
-                      enabled: Boolean(mainInstance?.transcriptTextForItem(modelData))
-                      onClicked: {
-                        if (mainInstance)
-                          mainInstance.copyHistoryItem(modelData);
-                      }
-                    }
-
-                    NButton {
-                      text: "Export"
-                      enabled: Boolean(modelData.jobId)
-                      onClicked: {
-                        if (mainInstance)
-                          mainInstance.exportHistoryItem(modelData.jobId);
-                      }
-                    }
-
-                    Item {
-                      Layout.fillWidth: true
+                      elide: Text.ElideRight
                     }
 
                     NText {
-                      text: modelData.cleanupModel || modelData.sttModel || ""
+                      text: (modelData?.status || "idle") + " • " + (modelData?.completedAt || modelData?.createdAt || "")
+                      pointSize: Style.fontSizeXS
+                      color: Color.mOnSurfaceVariant
+                      Layout.fillWidth: true
+                      elide: Text.ElideRight
+                    }
+                  }
+
+                  Rectangle {
+                    Layout.preferredWidth: badgeText.implicitWidth + Style.marginM * 2
+                    Layout.preferredHeight: badgeText.implicitHeight + Style.marginXS * 2
+                    radius: Style.radiusM
+                    color: Color.mSurfaceVariant
+
+                    NText {
+                      id: badgeText
+                      anchors.centerIn: parent
+                      text: modelData?.promptPresetId || "preset"
                       pointSize: Style.fontSizeXS
                       color: Color.mOnSurfaceVariant
                     }
                   }
                 }
+
+                NText {
+                  text: mainInstance?.transcriptPreview(mainInstance?.transcriptTextForItem(modelData) || "") || "Transcript pending"
+                  pointSize: Style.fontSizeS
+                  color: Color.mOnSurface
+                  Layout.fillWidth: true
+                  wrapMode: Text.WordWrap
+                }
+
+                RowLayout {
+                  Layout.fillWidth: true
+                  spacing: Style.marginM
+
+                  NButton {
+                    text: "Copy"
+                    enabled: Boolean(mainInstance?.transcriptTextForItem(modelData))
+                    onClicked: {
+                      if (mainInstance)
+                        mainInstance.copyHistoryItem(modelData);
+                    }
+                  }
+
+                  NButton {
+                    text: "Export"
+                    enabled: Boolean(modelData?.jobId)
+                    onClicked: {
+                      if (mainInstance)
+                        mainInstance.exportHistoryItem(modelData?.jobId || "");
+                    }
+                  }
+
+                  Item {
+                    Layout.fillWidth: true
+                  }
+
+                  NText {
+                    text: modelData?.cleanupModel || modelData?.sttModel || ""
+                    pointSize: Style.fontSizeXS
+                    color: Color.mOnSurfaceVariant
+                  }
+                }
               }
             }
+
           }
 
           NText {
             visible: (mainInstance?.historyItems || []).length === 0
-            text: mainInstance?.historyLoading ? "Loading history…" : "No transcript history yet. Record once to populate this list."
+            text: mainInstance?.historyLoading ? "Loading history…" : ("No transcript history yet (count=" + ((mainInstance?.historyItems || []).length) + "). Record once to populate this list.")
             pointSize: Style.fontSizeS
             color: Color.mOnSurfaceVariant
             Layout.fillWidth: true
